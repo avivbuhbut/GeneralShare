@@ -102,5 +102,19 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -f downloads
-          git commit -m 'Publish Aviv Shift Sync Android APK'
+          git commit -m 'Publish Aviv Shift Sync Android APK' || true
           git push origin HEAD:aviv-shift-sync-download
+
+      - name: Publish release asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG='aviv-shift-sync-v1.0.1'
+          gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" \
+            Aviv_Shift_Sync_Android_FIXED.apk \
+            Aviv_Shift_Sync_Android_FIXED.sha256 \
+            --title 'Aviv Shift Sync Android v1.0.1' \
+            --notes 'Fixed Hebrew OCR build. ARM64 Android APK.'
