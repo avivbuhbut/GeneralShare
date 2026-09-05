@@ -1,0 +1,106 @@
+name: Build Aviv Shift Sync APK
+
+on:
+  push:
+    branches:
+      - aviv-shift-sync-download
+    paths-ignore:
+      - 'downloads/**'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 9.5
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Reconstruct app and fix Hebrew OCR
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf shift-sync-phone
+          cat aviv-shift-sync-source/chunk_* > /tmp/app.b64
+          base64 -d /tmp/app.b64 > /tmp/app.tar.gz
+          mkdir shift-sync-phone
+          tar -xzf /tmp/app.tar.gz -C shift-sync-phone
+
+          mkdir -p shift-sync-phone/app/src/main/assets/tessdata
+          curl -L --fail --retry 3 \
+            -o shift-sync-phone/app/src/main/assets/tessdata/heb.traineddata \
+            https://raw.githubusercontent.com/tesseract-ocr/tessdata/3.04.00/heb.traineddata
+          test -s shift-sync-phone/app/src/main/assets/tessdata/heb.traineddata
+          sha256sum shift-sync-phone/app/src/main/assets/tessdata/heb.traineddata | cut -d' ' -f1 > /tmp/model.sha
+
+          OCR=shift-sync-phone/app/src/main/java/il/co/aviv/shiftsync/OcrEngine.java
+          sed -i 's/if (!heb.exists() || heb.length() < 100_000) {/if (true) {/' "$OCR"
+          grep -q 'if (true)' "$OCR"
+
+          GRADLE=shift-sync-phone/app/build.gradle.kts
+          sed -i 's/versionCode = 1/versionCode = 2/' "$GRADLE"
+          sed -i 's/versionName = "1.0.0"/versionName = "1.0.1"/' "$GRADLE"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('shift-sync-phone/app/build.gradle.kts')
+          s = p.read_text()
+          if 'abiFilters += listOf("arm64-v8a")' not in s:
+              marker = '        versionName = "1.0.1"\n'
+              if marker not in s:
+                  raise SystemExit('version marker not found')
+              s = s.replace(marker, marker + '        ndk {\n            abiFilters += listOf("arm64-v8a")\n        }\n', 1)
+          p.write_text(s)
+          PY
+          grep -q 'arm64-v8a' "$GRADLE"
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle -p shift-sync-phone :app:assembleDebug --stacktrace
+          cp shift-sync-phone/app/build/outputs/apk/debug/app-debug.apk Aviv_Shift_Sync_Android_FIXED.apk
+          test -s Aviv_Shift_Sync_Android_FIXED.apk
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED=$(cat /tmp/model.sha)
+          ACTUAL=$(unzip -p Aviv_Shift_Sync_Android_FIXED.apk assets/tessdata/heb.traineddata | sha256sum | cut -d' ' -f1)
+          test "$EXPECTED" = "$ACTUAL"
+          ABIS=$(unzip -Z1 Aviv_Shift_Sync_Android_FIXED.apk | awk -F/ '/^lib\/[^/]+\// {print $2}' | sort -u | tr '\n' ' ')
+          echo "ABIS=$ABIS"
+          test "$ABIS" = 'arm64-v8a '
+          unzip -t Aviv_Shift_Sync_Android_FIXED.apk >/dev/null
+          sha256sum Aviv_Shift_Sync_Android_FIXED.apk > Aviv_Shift_Sync_Android_FIXED.sha256
+          echo "APK_BYTES=$(wc -c < Aviv_Shift_Sync_Android_FIXED.apk)"
+          echo "OCR_SHA256=$ACTUAL"
+
+      - name: Publish direct-download APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p downloads
+          cp Aviv_Shift_Sync_Android_FIXED.apk downloads/
+          cp Aviv_Shift_Sync_Android_FIXED.sha256 downloads/
+          printf 'Aviv Shift Sync Android v1.0.1\nHebrew OCR: Tesseract 3.04\nABI: arm64-v8a\n' > downloads/BUILD_INFO.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f downloads
+          git commit -m 'Publish Aviv Shift Sync Android APK'
+          git push origin HEAD:aviv-shift-sync-download
