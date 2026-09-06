@@ -50,47 +50,48 @@ jobs:
           test -s shift-sync-phone/app/src/main/assets/tessdata/heb.traineddata
           sha256sum shift-sync-phone/app/src/main/assets/tessdata/heb.traineddata | cut -d' ' -f1 > /tmp/model.sha
 
-      - name: Apply bottom-two-row fix
+      - name: Apply v1.0.3 fixes
         shell: bash
         run: |
           set -euo pipefail
-          python3 shift-sync-fix/patch_v102.py
+          python3 shift-sync-fix/patch_v103.py
           grep -q 'Always use the actual LAST two Excel grid rows' shift-sync-phone/app/src/main/java/il/co/aviv/shiftsync/ImageParser.java
-          grep -q 'versionName = "1.0.2"' shift-sync-phone/app/build.gradle.kts
+          grep -q 'Each file is independent' shift-sync-phone/app/src/main/java/il/co/aviv/shiftsync/MainActivity.java
+          grep -q 'versionName = "1.0.3"' shift-sync-phone/app/build.gradle.kts
 
       - name: Build APK
         shell: bash
         run: |
           set -euo pipefail
           gradle -p shift-sync-phone :app:assembleDebug --stacktrace
-          cp shift-sync-phone/app/build/outputs/apk/debug/app-debug.apk Aviv_Shift_Sync_Android_v1.0.2.apk
-          test -s Aviv_Shift_Sync_Android_v1.0.2.apk
+          cp shift-sync-phone/app/build/outputs/apk/debug/app-debug.apk Aviv_Shift_Sync_Android_v1.0.3.apk
+          test -s Aviv_Shift_Sync_Android_v1.0.3.apk
 
       - name: Verify APK
         shell: bash
         run: |
           set -euo pipefail
           EXPECTED=$(cat /tmp/model.sha)
-          ACTUAL=$(unzip -p Aviv_Shift_Sync_Android_v1.0.2.apk assets/tessdata/heb.traineddata | sha256sum | cut -d' ' -f1)
+          ACTUAL=$(unzip -p Aviv_Shift_Sync_Android_v1.0.3.apk assets/tessdata/heb.traineddata | sha256sum | cut -d' ' -f1)
           test "$EXPECTED" = "$ACTUAL"
-          ABIS=$(unzip -Z1 Aviv_Shift_Sync_Android_v1.0.2.apk | awk -F/ '/^lib\/[^/]+\// {print $2}' | sort -u | tr '\n' ' ')
+          ABIS=$(unzip -Z1 Aviv_Shift_Sync_Android_v1.0.3.apk | awk -F/ '/^lib\/[^/]+\// {print $2}' | sort -u | tr '\n' ' ')
           test "$ABIS" = 'arm64-v8a '
-          unzip -t Aviv_Shift_Sync_Android_v1.0.2.apk >/dev/null
-          sha256sum Aviv_Shift_Sync_Android_v1.0.2.apk > Aviv_Shift_Sync_Android_v1.0.2.sha256
-          echo "APK_BYTES=$(wc -c < Aviv_Shift_Sync_Android_v1.0.2.apk)"
+          unzip -t Aviv_Shift_Sync_Android_v1.0.3.apk >/dev/null
+          sha256sum Aviv_Shift_Sync_Android_v1.0.3.apk > Aviv_Shift_Sync_Android_v1.0.3.sha256
+          echo "APK_BYTES=$(wc -c < Aviv_Shift_Sync_Android_v1.0.3.apk)"
 
       - name: Publish direct download
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p downloads
-          cp Aviv_Shift_Sync_Android_v1.0.2.apk downloads/
-          cp Aviv_Shift_Sync_Android_v1.0.2.sha256 downloads/
-          printf 'Aviv Shift Sync Android v1.0.2\nFix: bottom two Excel rows\nHebrew OCR: Tesseract 3.04\nABI: arm64-v8a\n' > downloads/BUILD_INFO.txt
+          cp Aviv_Shift_Sync_Android_v1.0.3.apk downloads/
+          cp Aviv_Shift_Sync_Android_v1.0.3.sha256 downloads/
+          printf 'Aviv Shift Sync Android v1.0.3\nFix: continue when Aviv is absent from one of the two shift images\nFix: bottom two Excel rows\nHebrew OCR: Tesseract 3.04\nABI: arm64-v8a\n' > downloads/BUILD_INFO.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -f downloads
-          git commit -m 'Publish Aviv Shift Sync Android v1.0.2' || true
+          git commit -m 'Publish Aviv Shift Sync Android v1.0.3' || true
           git push origin HEAD:aviv-shift-sync-download
 
       - name: Publish release
@@ -99,6 +100,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG=aviv-shift-sync-v1.0.2
+          TAG=aviv-shift-sync-v1.0.3
           gh release delete "$TAG" --yes --cleanup-tag || true
-          gh release create "$TAG" Aviv_Shift_Sync_Android_v1.0.2.apk Aviv_Shift_Sync_Android_v1.0.2.sha256 --title 'Aviv Shift Sync Android v1.0.2' --notes 'Fixes detection of the actual last two Excel rows in the wide cropped schedule image. Hebrew OCR included.'
+          gh release create "$TAG" Aviv_Shift_Sync_Android_v1.0.3.apk Aviv_Shift_Sync_Android_v1.0.3.sha256 --title 'Aviv Shift Sync Android v1.0.3' --notes 'Continues normally when Aviv is absent from one shift image, while preserving the v1.0.2 bottom-two-row detection and Hebrew OCR fixes.'
