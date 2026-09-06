@@ -55,11 +55,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 shift-sync-fix/patch_v104.py
+          python3 shift-sync-fix/patch_v104_repos.py
           grep -q 'OEM_LSTM_ONLY' shift-sync-phone/app/src/main/java/il/co/aviv/shiftsync/OcrEngine.java
           grep -q 'findVerticalLinesColor' shift-sync-phone/app/src/main/java/il/co/aviv/shiftsync/ImageParser.java
           grep -q 'Each file is independent' shift-sync-phone/app/src/main/java/il/co/aviv/shiftsync/MainActivity.java
           grep -q 'נמצאו ונשמרו' shift-sync-phone/app/src/main/java/il/co/aviv/shiftsync/MainActivity.java
           grep -q 'tesseract4android-openmp:4.9.0' shift-sync-phone/app/build.gradle.kts
+          grep -q 'jitpack.io' shift-sync-phone/settings.gradle.kts
           grep -q 'versionName = "1.0.4"' shift-sync-phone/app/build.gradle.kts
 
       - name: Build APK
