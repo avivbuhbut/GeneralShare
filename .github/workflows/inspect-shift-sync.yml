@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct and print OCR source
+      - name: Reconstruct and print parser source
         shell: bash
         run: |
           set -euo pipefail
@@ -18,7 +18,7 @@ jobs:
           base64 -d /tmp/app.b64 > /tmp/app.tar.gz
           mkdir appsrc
           tar -xzf /tmp/app.tar.gz -C appsrc
-          echo '=== OcrEngine.java ==='
-          cat appsrc/app/src/main/java/il/co/aviv/shiftsync/OcrEngine.java
-          echo '=== MainActivity relevant ==='
-          grep -n -B 8 -A 24 -E 'OcrEngine|recogn|detect|crop|Bitmap' appsrc/app/src/main/java/il/co/aviv/shiftsync/MainActivity.java || true
+          echo '=== ImageParser.java ==='
+          cat appsrc/app/src/main/java/il/co/aviv/shiftsync/ImageParser.java
+          echo '=== CropImageView.java ==='
+          cat appsrc/app/src/main/java/il/co/aviv/shiftsync/CropImageView.java
