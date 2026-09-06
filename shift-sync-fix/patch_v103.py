@@ -43,8 +43,8 @@ replacement = r'''    private void startSync() {
                 bundle.diagnostics.addAll(skippedDiagnostics);
 
                 if (bundle.events.isEmpty()) {
-                    throw new IllegalStateException("לא נמצאה משמרת של אביב באף אחת מהתמונות.\n" +
-                            String.join("\n", bundle.diagnostics));
+                    throw new IllegalStateException("לא נמצאה משמרת של אביב באף אחת מהתמונות. | " +
+                            String.join(" | ", bundle.diagnostics));
                 }
 
                 runOnUiThread(() -> progressText.setText("מעדכן את Google Calendar…"));
