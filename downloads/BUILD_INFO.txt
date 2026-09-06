@@ -1,3 +1,4 @@
-Aviv Shift Sync Android v1.0.1
+Aviv Shift Sync Android v1.0.2
+Fix: bottom two Excel rows
 Hebrew OCR: Tesseract 3.04
 ABI: arm64-v8a
