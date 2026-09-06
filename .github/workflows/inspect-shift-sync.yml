@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct and print parser source
+      - name: Reconstruct and inspect current source
         shell: bash
         run: |
           set -euo pipefail
@@ -18,7 +18,9 @@ jobs:
           base64 -d /tmp/app.b64 > /tmp/app.tar.gz
           mkdir appsrc
           tar -xzf /tmp/app.tar.gz -C appsrc
-          echo '=== ImageParser.java ==='
-          cat appsrc/app/src/main/java/il/co/aviv/shiftsync/ImageParser.java
-          echo '=== CropImageView.java ==='
-          cat appsrc/app/src/main/java/il/co/aviv/shiftsync/CropImageView.java
+          echo '=== app/build.gradle.kts ==='
+          cat appsrc/app/build.gradle.kts
+          echo '=== OcrEngine.java ==='
+          cat appsrc/app/src/main/java/il/co/aviv/shiftsync/OcrEngine.java
+          echo '=== MainActivity showSuccess ==='
+          grep -n -A 55 -B 5 'private void showSuccess' appsrc/app/src/main/java/il/co/aviv/shiftsync/MainActivity.java || true
