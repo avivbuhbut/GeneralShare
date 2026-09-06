@@ -1,0 +1,75 @@
+name: Package Shift Sync Handoff
+
+on:
+  push:
+    branches:
+      - aviv-shift-sync-download
+    paths:
+      - 'shift-sync-handoff/**'
+      - '.github/workflows/package-shift-sync-handoff.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct current Android source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf shift-sync-phone
+          cat aviv-shift-sync-source/chunk_* > /tmp/app.b64
+          base64 -d /tmp/app.b64 > /tmp/app.tar.gz
+          mkdir shift-sync-phone
+          tar -xzf /tmp/app.tar.gz -C shift-sync-phone
+
+      - name: Apply current patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 shift-sync-fix/patch_v104.py
+          python3 shift-sync-fix/patch_v104_repos.py
+
+      - name: Assemble handoff directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT='Aviv_Shift_Sync_Handoff_v1.0.4'
+          rm -rf "$OUT"
+          mkdir -p "$OUT/SOURCE" "$OUT/PATCH_HISTORY" "$OUT/CURRENT_APK"
+          cp -a shift-sync-phone/. "$OUT/SOURCE/"
+          cp shift-sync-fix/patch_v102.py "$OUT/PATCH_HISTORY/"
+          cp shift-sync-fix/patch_v103.py "$OUT/PATCH_HISTORY/"
+          cp shift-sync-fix/patch_v104.py "$OUT/PATCH_HISTORY/"
+          cp shift-sync-fix/patch_v104_repos.py "$OUT/PATCH_HISTORY/"
+          cp shift-sync-handoff/HANDOFF_HE.md "$OUT/HANDOFF_HE.md"
+          cp .github/workflows/build-aviv-shift-sync.yml "$OUT/BUILD_WORKFLOW.yml"
+          if [ -f downloads/BUILD_INFO.txt ]; then cp downloads/BUILD_INFO.txt "$OUT/BUILD_INFO.txt"; fi
+          if [ -f downloads/Aviv_Shift_Sync_Android_v1.0.4.apk ]; then cp downloads/Aviv_Shift_Sync_Android_v1.0.4.apk "$OUT/CURRENT_APK/"; fi
+          printf '%s\n' \
+            'Repository: https://github.com/avivbuhbut/GeneralShare' \
+            'Branch: aviv-shift-sync-download' \
+            'Current Android build: v1.0.4' \
+            'IMPORTANT: real-device OCR quality is NOT considered validated. Read HANDOFF_HE.md.' \
+            > "$OUT/START_HERE.txt"
+          zip -qr "${OUT}.zip" "$OUT"
+          sha256sum "${OUT}.zip" > "${OUT}.zip.sha256"
+          test -s "${OUT}.zip"
+
+      - name: Publish handoff release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG='aviv-shift-sync-handoff-v1.0.4'
+          ZIP='Aviv_Shift_Sync_Handoff_v1.0.4.zip'
+          gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" "$ZIP" "${ZIP}.sha256" \
+            --title 'Aviv Shift Sync – Full Handoff v1.0.4' \
+            --notes 'Full source handoff for another model/developer. Includes reconstructed Android source, patch history, build workflow, latest APK when available, and explicit known regressions/acceptance criteria.'
