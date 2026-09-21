@@ -210,12 +210,11 @@ public class MainActivity extends Activity {
         resultImage.setTag(resultCard);
         root.addView(resultCard);
 
-        LinearLayout resultButtons = new LinearLayout(this);
-        resultButtons.setOrientation(LinearLayout.HORIZONTAL);
-        resultButtons.setPadding(0, dp(12), 0, 0);
-        resultButtons.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-        resultButtons.setVisibility(View.GONE);
-        resultButtons.setTag("result_buttons");
+        resultButtonsRow = new LinearLayout(this);
+        resultButtonsRow.setOrientation(LinearLayout.HORIZONTAL);
+        resultButtonsRow.setPadding(0, dp(12), 0, 0);
+        resultButtonsRow.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        resultButtonsRow.setVisibility(View.GONE);
 
         retryButton = button("עוד סידור", false);
         retryButton.setOnClickListener(v -> organizeRoom());
@@ -225,8 +224,8 @@ public class MainActivity extends Activity {
         saveButton.setOnClickListener(v -> saveResult());
         LinearLayout.LayoutParams saveLp = weighted();
         saveLp.setMarginStart(dp(10));
-        resultButtons.addView(saveButton, saveLp);
-        root.addView(resultButtons);
+        resultButtonsRow.addView(saveButton, saveLp);
+        root.addView(resultButtonsRow);
 
         TextView privacy = text("התמונה נשלחת ל‑OpenAI רק אחרי לחיצה על “סדר לי את החדר”.", 13, muted, false);
         privacy.setGravity(Gravity.CENTER);
