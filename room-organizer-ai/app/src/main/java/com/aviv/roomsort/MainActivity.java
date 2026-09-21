@@ -74,6 +74,13 @@ public class MainActivity extends Activity {
     private TextView stepsLabel;
     private TextView stepsText;
     private LinearLayout stepsCard;
+    private TextView feedbackLabel;
+    private LinearLayout feedbackCard;
+    private EditText feedbackInput;
+    private Button feedbackButton;
+    private Button alternateButton;
+    private Button tidyModeButton;
+    private Button redesignModeButton;
     private ProgressBar progress;
     private Button organizeButton;
     private Button retryButton;
@@ -85,20 +92,18 @@ public class MainActivity extends Activity {
     private byte[] resultBytes;
     private Uri captureUri;
     private boolean running = false;
+    private boolean redesignMode = true;
 
-    private static final String STRICT_PROMPT =
-            "EDIT ONLY this exact room photo. The sole goal is to make the existing room look realistically tidy " +
-            "by repositioning ONLY objects and furniture already visible in the input image.\n\n" +
+    private static final String BASE_EDIT_PROMPT =
+            "EDIT ONLY this exact room photo. Reorganize the same real room using ONLY objects and furniture already visible in the input image.\n\n" +
             "OBJECT CONSERVATION IS MANDATORY:\n" +
-            "- Keep the exact same room, architecture, walls, floor, ceiling, windows, doors, lighting, camera angle, perspective and geometry.\n" +
+            "- Keep the exact same room, architecture, walls, floor, ceiling, windows, doors, camera angle, perspective and geometry.\n" +
             "- Keep every existing furniture piece and every meaningful visible object. Preserve identity, color, material, approximate size and count.\n" +
-            "- You may ONLY move, rotate, fold, stack, group, align, close, or neatly place existing movable things in plausible locations that already exist in the room.\n" +
+            "- You may move, rotate, fold, stack, group, align, close, or neatly place existing movable things in physically plausible locations.\n" +
             "- Do NOT add, invent, duplicate, replace or redesign any furniture, storage, shelf, basket, box, decoration, plant, lamp, rug, appliance, artwork, container or object.\n" +
-            "- Do NOT remove clutter by deleting objects. Do NOT hide objects behind newly invented items or outside the frame. Every meaningful object visible in the input should still exist in the edited result, merely rearranged.\n" +
-            "- Do not change large furniture unless it is physically plausible to reposition it within the visible room.\n" +
+            "- Do NOT remove clutter by deleting objects. Every meaningful object visible in the input must still exist in the edited result.\n" +
             "- If an object cannot reasonably be moved, leave it where it is.\n" +
-            "- Do not renovate, repaint, restyle, redecorate, or alter architecture.\n" +
-            "- Treat this as spatial rearrangement of the same inventory, NOT interior design.\n" +
+            "- Do not renovate, repaint, or alter architecture.\n" +
             "- Output one photorealistic edited version of the SAME photo. No text, labels, arrows, annotations or instructions.";
 
     @Override
@@ -175,7 +180,26 @@ public class MainActivity extends Activity {
         sourceButtons.addView(galleryButton, galleryLp);
         root.addView(sourceButtons);
 
-        organizeButton = button("סדר לי את החדר", true);
+        TextView modeLabel = text("איך תרצה שאסדר?", 18, ink, true);
+        modeLabel.setPadding(0, dp(18), 0, dp(8));
+        root.addView(modeLabel);
+
+        LinearLayout modeRow = new LinearLayout(this);
+        modeRow.setOrientation(LinearLayout.HORIZONTAL);
+        modeRow.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+
+        redesignModeButton = button("✓ ארגון מחדש", true);
+        redesignModeButton.setOnClickListener(v -> setRedesignMode(true));
+        modeRow.addView(redesignModeButton, weighted());
+
+        tidyModeButton = button("סידור יסודי", false);
+        tidyModeButton.setOnClickListener(v -> setRedesignMode(false));
+        LinearLayout.LayoutParams tidyLp = weighted();
+        tidyLp.setMarginStart(dp(10));
+        modeRow.addView(tidyModeButton, tidyLp);
+        root.addView(modeRow);
+
+        organizeButton = button("תן לי סידור חכם", true);
         organizeButton.setEnabled(false);
         organizeButton.setAlpha(0.45f);
         organizeButton.setTextSize(19);
@@ -245,7 +269,51 @@ public class MainActivity extends Activity {
         stepsCard.setVisibility(View.GONE);
         root.addView(stepsCard);
 
-        TextView privacy = text("התמונה נשלחת ל‑OpenAI רק אחרי לחיצה על “סדר לי את החדר”.", 13, muted, false);
+        feedbackLabel = text("רוצה לשנות משהו?", 23, ink, true);
+        feedbackLabel.setPadding(0, dp(24), 0, dp(10));
+        feedbackLabel.setVisibility(View.GONE);
+        root.addView(feedbackLabel);
+
+        feedbackCard = cardContainer();
+        feedbackCard.setPadding(dp(14), dp(14), dp(14), dp(14));
+        feedbackInput = new EditText(this);
+        feedbackInput.setTextDirection(View.TEXT_DIRECTION_RTL);
+        feedbackInput.setGravity(Gravity.RIGHT | Gravity.TOP);
+        feedbackInput.setHint("לדוגמה: תשאיר את השולחן במקום / תעשה את המטבח יותר פתוח / תעביר פחות דברים");
+        feedbackInput.setMinLines(2);
+        feedbackInput.setMaxLines(5);
+        feedbackInput.setTextSize(16);
+        feedbackInput.setPadding(dp(10), dp(8), dp(10), dp(8));
+        feedbackCard.addView(feedbackInput, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        feedbackButton = button("עדכן לפי הבקשה שלי", true);
+        feedbackButton.setOnClickListener(v -> {
+            String note = feedbackInput.getText().toString().trim();
+            if (note.isEmpty()) {
+                feedbackInput.setError("כתוב מה תרצה לשנות");
+            } else {
+                organizeRoom(note, false);
+            }
+        });
+        LinearLayout.LayoutParams feedbackBtnLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(52));
+        feedbackBtnLp.setMargins(0, dp(12), 0, 0);
+        feedbackCard.addView(feedbackButton, feedbackBtnLp);
+
+        alternateButton = button("תן לי רעיון אחר לגמרי", false);
+        alternateButton.setOnClickListener(v -> organizeRoom(
+                "Create a clearly different but still physically plausible arrangement from the previous idea. " +
+                "Use the same inventory. Prefer a noticeably different layout, especially for work surfaces, chairs, tables, movable storage and free walking space.", true));
+        LinearLayout.LayoutParams altLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(52));
+        altLp.setMargins(0, dp(10), 0, 0);
+        feedbackCard.addView(alternateButton, altLp);
+
+        feedbackCard.setVisibility(View.GONE);
+        root.addView(feedbackCard);
+
+        TextView privacy = text("התמונה נשלחת ל‑OpenAI רק אחרי לחיצה על כפתור יצירה או עדכון.", 13, muted, false);
         privacy.setGravity(Gravity.CENTER);
         privacy.setPadding(dp(8), dp(18), dp(8), 0);
         root.addView(privacy);
@@ -394,6 +462,10 @@ public class MainActivity extends Activity {
     }
 
     private void organizeRoom() {
+        organizeRoom("", false);
+    }
+
+    private void organizeRoom(String userFeedback, boolean forceDifferentIdea) {
         if (running || normalizedInput == null || !normalizedInput.exists()) return;
 
         String key = loadApiKey();
@@ -407,7 +479,7 @@ public class MainActivity extends Activity {
 
         new Thread(() -> {
             try {
-                byte[] edited = requestEdit(normalizedInput, key);
+                byte[] edited = requestEdit(normalizedInput, key, userFeedback, forceDifferentIdea);
                 Bitmap candidate = BitmapFactory.decodeByteArray(edited, 0, edited.length);
                 if (candidate == null) throw new IllegalStateException("Invalid generated image");
 
@@ -448,7 +520,7 @@ public class MainActivity extends Activity {
         }, "room-editor").start();
     }
 
-    private byte[] requestEdit(File image, String apiKey) throws Exception {
+    private byte[] requestEdit(File image, String apiKey, String userFeedback, boolean forceDifferentIdea) throws Exception {
         String boundary = "----RoomOrganizer" + System.currentTimeMillis();
         HttpURLConnection connection = (HttpURLConnection)
                 new URL("https://api.openai.com/v1/images/edits").openConnection();
@@ -462,7 +534,7 @@ public class MainActivity extends Activity {
 
         try (OutputStream out = new BufferedOutputStream(connection.getOutputStream())) {
             writeField(out, boundary, "model", IMAGE_MODEL);
-            writeField(out, boundary, "prompt", STRICT_PROMPT);
+            writeField(out, boundary, "prompt", buildEditPrompt(userFeedback, forceDifferentIdea));
             writeField(out, boundary, "quality", "high");
             writeField(out, boundary, "size", "auto");
             writeField(out, boundary, "output_format", "jpeg");
@@ -493,6 +565,57 @@ public class MainActivity extends Activity {
         String b64 = data.getJSONObject(0).optString("b64_json", "");
         if (b64.isEmpty()) throw new Exception("No b64_json");
         return Base64.decode(b64, Base64.DEFAULT);
+    }
+
+    private String buildEditPrompt(String userFeedback, boolean forceDifferentIdea) {
+        String modePrompt;
+        if (redesignMode) {
+            modePrompt =
+                    "\n\nREARRANGEMENT MODE: Be thorough and imaginative with the EXISTING inventory. " +
+                    "Look for a better overall layout, not just surface tidying. You may reposition movable tables, chairs, stools, small cabinets, " +
+                    "movable shelving, appliances that are clearly movable, and other existing furniture when physically plausible. " +
+                    "Improve walking space, grouping by function, accessibility, work surfaces and visual order. " +
+                    "For a kitchen, consider a more useful arrangement of existing counter items, movable appliances, table/chairs and visible storage. " +
+                    "For a bedroom/living room, consider a genuinely better layout of existing movable furniture. " +
+                    "Still do not invent, delete, duplicate, resize or replace anything.";
+        } else {
+            modePrompt =
+                    "\n\nDEEP TIDY MODE: Keep the main furniture layout mostly where it is, but organize the room thoroughly. " +
+                    "Group related items, clear walking paths and work surfaces, fold/stack/alignment where appropriate, and make the room look genuinely finished.";
+        }
+
+        String feedbackPrompt = "";
+        if (userFeedback != null && !userFeedback.trim().isEmpty()) {
+            feedbackPrompt = "\n\nUSER FEEDBACK / REQUEST (follow this unless it conflicts with object conservation): " +
+                    userFeedback.trim();
+        }
+        if (forceDifferentIdea) {
+            feedbackPrompt += "\n\nIMPORTANT: Produce a substantially different valid arrangement idea, not a near-duplicate of the previous concept.";
+        }
+        return BASE_EDIT_PROMPT + modePrompt + feedbackPrompt;
+    }
+
+    private void setRedesignMode(boolean redesign) {
+        redesignMode = redesign;
+        if (redesignModeButton != null) {
+            redesignModeButton.setText(redesign ? "✓ ארגון מחדש" : "ארגון מחדש");
+            redesignModeButton.setTextColor(redesign ? Color.WHITE : accent);
+            GradientDrawable gd = new GradientDrawable();
+            gd.setColor(redesign ? accent : accentSoft);
+            gd.setCornerRadius(dp(16));
+            redesignModeButton.setBackground(gd);
+        }
+        if (tidyModeButton != null) {
+            tidyModeButton.setText(redesign ? "סידור יסודי" : "✓ סידור יסודי");
+            tidyModeButton.setTextColor(redesign ? accent : Color.WHITE);
+            GradientDrawable gd = new GradientDrawable();
+            gd.setColor(redesign ? accentSoft : accent);
+            gd.setCornerRadius(dp(16));
+            tidyModeButton.setBackground(gd);
+        }
+        if (organizeButton != null) {
+            organizeButton.setText(redesign ? "תן לי סידור חכם" : "סדר לי יסודי");
+        }
     }
 
     private Validation validateSameInventory(File original, byte[] edited, String apiKey) {
@@ -572,12 +695,13 @@ public class MainActivity extends Activity {
                 .put("text",
                         "Image 1 is the original messy room. Image 2 is the target organized version. " +
                         "Create a practical sequence of steps that a person can physically follow to transform image 1 into image 2. " +
-                        "Write in Hebrew. Use 5 to 12 steps, ordered sensibly. " +
+                        "Write in Hebrew. Use 8 to 15 steps, ordered sensibly and thoroughly. Start with large spatial moves, then surfaces, then smaller items and finishing touches. " +
                         "Each step must say exactly which existing object or small group of existing objects to move and where to place it, " +
                         "based only on visible differences between the two images. " +
                         "Do not suggest buying anything. Do not invent furniture, boxes, shelves, baskets, storage, or objects that are not visible. " +
                         "Do not tell the user to throw things away unless the target image clearly shows the same item in a different visible location. " +
-                        "If a relocation is uncertain, omit it. Keep each step short and concrete. " +
+                        "Explain destination locations precisely using visible landmarks such as table, counter, wall, shelf, chair, bed or cabinet. " +
+                        "If a relocation is uncertain, omit it. Keep each step short, concrete and directly actionable. " +
                         "Return ONLY a numbered Hebrew list. No title, intro, summary, markdown bullets, or extra commentary."));
         content.put(new JSONObject()
                 .put("type", "input_image")
@@ -694,6 +818,10 @@ public class MainActivity extends Activity {
         organizeButton.setAlpha(organizeButton.isEnabled() ? 1f : 0.45f);
         if (retryButton != null) retryButton.setEnabled(!busy);
         if (saveButton != null) saveButton.setEnabled(!busy);
+        if (feedbackButton != null) feedbackButton.setEnabled(!busy);
+        if (alternateButton != null) alternateButton.setEnabled(!busy);
+        if (tidyModeButton != null) tidyModeButton.setEnabled(!busy);
+        if (redesignModeButton != null) redesignModeButton.setEnabled(!busy);
     }
 
     private void hideResult() {
@@ -704,6 +832,8 @@ public class MainActivity extends Activity {
         if (stepsLabel != null) stepsLabel.setVisibility(View.GONE);
         if (stepsCard != null) stepsCard.setVisibility(View.GONE);
         if (stepsText != null) stepsText.setText("");
+        if (feedbackLabel != null) feedbackLabel.setVisibility(View.GONE);
+        if (feedbackCard != null) feedbackCard.setVisibility(View.GONE);
         resultImage.setImageDrawable(null);
     }
 
@@ -713,6 +843,8 @@ public class MainActivity extends Activity {
         View resultCard = (View) resultImage.getTag();
         if (resultCard != null) resultCard.setVisibility(View.VISIBLE);
         if (resultButtonsRow != null) resultButtonsRow.setVisibility(View.VISIBLE);
+        if (feedbackLabel != null) feedbackLabel.setVisibility(View.VISIBLE);
+        if (feedbackCard != null) feedbackCard.setVisibility(View.VISIBLE);
         resultLabel.post(() -> resultLabel.getParent().requestChildFocus(resultLabel, resultLabel));
     }
 
