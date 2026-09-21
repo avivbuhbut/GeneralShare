@@ -75,7 +75,7 @@ public class MainActivity extends Activity {
     private Button organizeButton;
     private Button retryButton;
     private Button saveButton;
-
+    private LinearLayout resultButtonsRow;\n
     private File normalizedInput;
     private Bitmap originalBitmap;
     private Bitmap resultBitmap;
