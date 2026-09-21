@@ -57,7 +57,7 @@ public class MainActivity extends Activity {
     private static final String PREFS = "room_organizer_secure";
     private static final String PREF_KEY = "api_key_encrypted";
     private static final String KEY_ALIAS = "room_organizer_api_key";
-    private static final String IMAGE_MODEL = "gpt-image-2.5-sunburst";
+    private static final String IMAGE_MODEL = "gpt-image-2";
     private static final String VISION_MODEL = "gpt-5.6-luna";
 
     private final int bg = Color.rgb(247, 246, 242);
@@ -71,6 +71,9 @@ public class MainActivity extends Activity {
     private ImageView resultImage;
     private TextView statusText;
     private TextView resultLabel;
+    private TextView stepsLabel;
+    private TextView stepsText;
+    private LinearLayout stepsCard;
     private ProgressBar progress;
     private Button organizeButton;
     private Button retryButton;
@@ -137,7 +140,7 @@ public class MainActivity extends Activity {
         header.addView(apiButton, new LinearLayout.LayoutParams(dp(112), dp(48)));
         root.addView(header);
 
-        TextView subtitle = text("צלם את החדר כמו שהוא. קבל את אותו חדר — רק מסודר.", 18, muted, false);
+        TextView subtitle = text("צלם את החדר כמו שהוא. קבל את אותו חדר מסודר + צעדים מדויקים איך להגיע לזה.", 18, muted, false);
         subtitle.setPadding(0, dp(6), 0, dp(18));
         root.addView(subtitle);
 
@@ -226,6 +229,21 @@ public class MainActivity extends Activity {
         saveLp.setMarginStart(dp(10));
         resultButtonsRow.addView(saveButton, saveLp);
         root.addView(resultButtonsRow);
+
+        stepsLabel = text("איך לסדר את זה — צעד אחרי צעד", 23, ink, true);
+        stepsLabel.setPadding(0, dp(24), 0, dp(10));
+        stepsLabel.setVisibility(View.GONE);
+        root.addView(stepsLabel);
+
+        stepsCard = cardContainer();
+        stepsCard.setPadding(dp(16), dp(16), dp(16), dp(16));
+        stepsText = text("", 17, ink, false);
+        stepsText.setLineSpacing(dp(5), 1.0f);
+        stepsText.setTextIsSelectable(true);
+        stepsCard.addView(stepsText, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        stepsCard.setVisibility(View.GONE);
+        root.addView(stepsCard);
 
         TextView privacy = text("התמונה נשלחת ל‑OpenAI רק אחרי לחיצה על “סדר לי את החדר”.", 13, muted, false);
         privacy.setGravity(Gravity.CENTER);
@@ -402,13 +420,24 @@ public class MainActivity extends Activity {
                     return;
                 }
 
+                runOnUiThread(() -> statusText.setText("התמונה מוכנה. מכין עכשיו צעדים אחד־אחד…"));
+
+                String generatedSteps = "";
+                try {
+                    generatedSteps = generateSteps(normalizedInput, edited, key);
+                } catch (Exception ignored) {
+                    generatedSteps = "";
+                }
+
                 resultBytes = edited;
                 resultBitmap = candidate;
+                final String stepsForUi = generatedSteps;
                 runOnUiThread(() -> {
                     showResult(candidate);
+                    showSteps(stepsForUi);
                     setBusy(false, validation.skipped
-                            ? "מוכן. בדיקת הקשיחות לא הושלמה, לכן כדאי להציץ שהרהיטים נשמרו."
-                            : "מוכן — התוצאה עברה גם בדיקת שימור חפצים.");
+                            ? "מוכן. בדיקת הקשיחות לא הושלמה, אבל התמונה והצעדים מוכנים."
+                            : "מוכן — קיבלת גם תמונה מסודרת וגם צעדים להגיע אליה.");
                     organizeButton.setText("סדר לי את החדר");
                 });
             } catch (ApiException e) {
@@ -528,6 +557,65 @@ public class MainActivity extends Activity {
         }
     }
 
+    private String generateSteps(File original, byte[] edited, String apiKey) throws Exception {
+        byte[] originalBytes = readAllBytes(original);
+        String originalB64 = Base64.encodeToString(originalBytes, Base64.NO_WRAP);
+        String editedB64 = Base64.encodeToString(edited, Base64.NO_WRAP);
+
+        JSONObject request = new JSONObject();
+        request.put("model", VISION_MODEL);
+        request.put("max_output_tokens", 700);
+
+        JSONArray content = new JSONArray();
+        content.put(new JSONObject()
+                .put("type", "input_text")
+                .put("text",
+                        "Image 1 is the original messy room. Image 2 is the target organized version. " +
+                        "Create a practical sequence of steps that a person can physically follow to transform image 1 into image 2. " +
+                        "Write in Hebrew. Use 5 to 12 steps, ordered sensibly. " +
+                        "Each step must say exactly which existing object or small group of existing objects to move and where to place it, " +
+                        "based only on visible differences between the two images. " +
+                        "Do not suggest buying anything. Do not invent furniture, boxes, shelves, baskets, storage, or objects that are not visible. " +
+                        "Do not tell the user to throw things away unless the target image clearly shows the same item in a different visible location. " +
+                        "If a relocation is uncertain, omit it. Keep each step short and concrete. " +
+                        "Return ONLY a numbered Hebrew list. No title, intro, summary, markdown bullets, or extra commentary."));
+        content.put(new JSONObject()
+                .put("type", "input_image")
+                .put("detail", "high")
+                .put("image_url", "data:image/jpeg;base64," + originalB64));
+        content.put(new JSONObject()
+                .put("type", "input_image")
+                .put("detail", "high")
+                .put("image_url", "data:image/jpeg;base64," + editedB64));
+
+        JSONArray input = new JSONArray();
+        input.put(new JSONObject().put("role", "user").put("content", content));
+        request.put("input", input);
+
+        HttpURLConnection connection = (HttpURLConnection)
+                new URL("https://api.openai.com/v1/responses").openConnection();
+        connection.setRequestMethod("POST");
+        connection.setDoOutput(true);
+        connection.setConnectTimeout(30000);
+        connection.setReadTimeout(120000);
+        connection.setRequestProperty("Authorization", "Bearer " + apiKey);
+        connection.setRequestProperty("Content-Type", "application/json");
+
+        byte[] payload = request.toString().getBytes(StandardCharsets.UTF_8);
+        connection.setFixedLengthStreamingMode(payload.length);
+        try (OutputStream out = new BufferedOutputStream(connection.getOutputStream())) {
+            out.write(payload);
+        }
+
+        int code = connection.getResponseCode();
+        String body = readResponse(connection, code);
+        if (code < 200 || code >= 300) return "";
+
+        String answer = extractOutputText(new JSONObject(body)).trim();
+        if (answer.length() > 5000) answer = answer.substring(0, 5000);
+        return answer;
+    }
+
     private String extractOutputText(JSONObject root) {
         StringBuilder text = new StringBuilder();
         JSONArray output = root.optJSONArray("output");
@@ -613,6 +701,9 @@ public class MainActivity extends Activity {
         View resultCard = (View) resultImage.getTag();
         if (resultCard != null) resultCard.setVisibility(View.GONE);
         if (resultButtonsRow != null) resultButtonsRow.setVisibility(View.GONE);
+        if (stepsLabel != null) stepsLabel.setVisibility(View.GONE);
+        if (stepsCard != null) stepsCard.setVisibility(View.GONE);
+        if (stepsText != null) stepsText.setText("");
         resultImage.setImageDrawable(null);
     }
 
@@ -623,6 +714,18 @@ public class MainActivity extends Activity {
         if (resultCard != null) resultCard.setVisibility(View.VISIBLE);
         if (resultButtonsRow != null) resultButtonsRow.setVisibility(View.VISIBLE);
         resultLabel.post(() -> resultLabel.getParent().requestChildFocus(resultLabel, resultLabel));
+    }
+
+    private void showSteps(String steps) {
+        if (steps == null || steps.trim().isEmpty()) {
+            stepsLabel.setVisibility(View.VISIBLE);
+            stepsCard.setVisibility(View.VISIBLE);
+            stepsText.setText("לא הצלחתי לייצר את רשימת הצעדים הפעם. אפשר ללחוץ “עוד סידור” ולנסות שוב.");
+            return;
+        }
+        stepsText.setText(steps.trim());
+        stepsLabel.setVisibility(View.VISIBLE);
+        stepsCard.setVisibility(View.VISIBLE);
     }
 
     private View findTaggedView(android.view.ViewGroup parent, Object tag) {
