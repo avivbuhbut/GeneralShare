@@ -219,7 +219,7 @@ public class MainActivity extends Activity {
 
         retryButton = button("עוד סידור", false);
         retryButton.setOnClickListener(v -> organizeRoom());
-        resultButtons.addView(retryButton, weighted());
+        resultButtonsRow.addView(retryButton, weighted());
 
         saveButton = button("שמור תמונה", true);
         saveButton.setOnClickListener(v -> saveResult());
@@ -613,9 +613,7 @@ public class MainActivity extends Activity {
         resultLabel.setVisibility(View.GONE);
         View resultCard = (View) resultImage.getTag();
         if (resultCard != null) resultCard.setVisibility(View.GONE);
-        LinearLayout root = (LinearLayout) ((ScrollView) findViewById(android.R.id.content).getChildAt(0)).getChildAt(0);
-        View resultButtons = findTaggedView(root, "result_buttons");
-        if (resultButtons != null) resultButtons.setVisibility(View.GONE);
+        if (resultButtonsRow != null) resultButtonsRow.setVisibility(View.GONE);
         resultImage.setImageDrawable(null);
     }
 
@@ -624,11 +622,7 @@ public class MainActivity extends Activity {
         resultImage.setImageBitmap(bitmap);
         View resultCard = (View) resultImage.getTag();
         if (resultCard != null) resultCard.setVisibility(View.VISIBLE);
-        View content = findViewById(android.R.id.content);
-        if (content instanceof android.view.ViewGroup) {
-            View resultButtons = findTaggedView((android.view.ViewGroup) content, "result_buttons");
-            if (resultButtons != null) resultButtons.setVisibility(View.VISIBLE);
-        }
+        if (resultButtonsRow != null) resultButtonsRow.setVisibility(View.VISIBLE);
         resultLabel.post(() -> resultLabel.getParent().requestChildFocus(resultLabel, resultLabel));
     }
 
